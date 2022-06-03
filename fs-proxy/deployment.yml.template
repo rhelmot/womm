@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: womm-proxy-$ID
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: womm-proxy-$ID
+  template:
+    metadata:
+      labels:
+        app: womm-proxy-$ID
+    spec:
+      containers:
+        - name: womm-proxy-$ID
+          image: rhelmot/womm-proxy
+          imagePullPolicy: Always
+          args:
+            - "/data"
+          securityContext:
+            privileged: true
+          ports:
+            #- name: ssh
+            #  containerPort: 22
+            - name: nfs
+              containerPort: 2049
+            - name: mountd
+              containerPort: 20048
+            - name: rpcbind
+              containerPort: 111
+          resources:
+            requests:
+              memory: '1Gi'
+              cpu: '100m'
+            limits:
+              memory: '2Gi'
+              cpu: '1000m'
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: womm-server-$ID
+  labels:
+    app: womm-server-$ID
+spec:
+  ports:
+    - name: nfs
+      port: 2049
+    - name: mountd
+      port: 20048
+    - name: rpcbind
+      port: 111
+  selector:
+    app: womm-proxy-$ID
