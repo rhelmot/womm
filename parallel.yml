@@ -1,0 +1,37 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: womm-deploy-$ID
+spec:
+  completions: $COMPLETIONS
+  parallelism: $PARALLELISM
+  completionMode: Indexed
+  backoffLimit: 6
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+      - name: womm-deploy-$ID
+        image: $USERNAME/womm-deploy-$ID
+        imagePullPolicy: Always
+        resources:
+          requests:
+            memory: "$JOB_MEM"
+            cpu: "$JOB_CPU"
+          limits:
+            memory: "$JOB_MEM"
+            cpu: "$JOB_CPU"
+        command:
+          - "sh"
+          - "-c"
+          - |
+              . /.womm-env
+              $JOB_CMD $$(cat .womm/input-$ID | head -n +$$(($(JOB_COMPLETION_INDEX) + 1)) | tail -n 1) || true
+        volumeMounts:
+        - name: nfs-shared
+          mountPath: "$PWD"
+      volumes:
+        - name: nfs-shared
+          nfs:
+            server: $NFS_SERVER
+            path: "/data"
