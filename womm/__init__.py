@@ -12,7 +12,7 @@ import string
 import platform
 import tempfile
 import threading
-import atexit
+from contextlib import contextmanager
 
 import psutil
 
@@ -76,77 +76,79 @@ def cfg_store(cfg):
     with open(cfg_path, 'w', encoding='utf-8') as fp:
         json.dump(cfg, fp)
 
-def build_image(base_img_name, mount=False):
-    tmp_id = make_id()
-    tmp_image_container = 'womm-buildertmp-' + tmp_id
+@contextmanager
+def bootstrap_image(base_img_name):
+    tmp_image = 'womm-buildertmp-' + make_id()
+    with open(basedir / 'Dockerfile', 'r', encoding='utf-8') as fp:
+        template = fp.read()
+    template = template \
+            .replace('$BASE_IMAGE_NAME', base_img_name) \
+            .replace('$UID', str(os.getuid())) \
+            .replace('$USER', os.getlogin()) \
+            .replace('$PWD', cwd)
+
     subprocess.run(
-        ['docker', 'build', '-q', '-t', tmp_image_container, '-'],
-        input=f"""
-FROM {base_img_name}
-RUN mkdir -p {cwd}
-WORKDIR {cwd}
-RUN echo '#!/bin/sh' > /usr/bin/exec; echo 'exec sh -c "$*"' >> /usr/bin/exec; chmod +x /usr/bin/exec
-ENTRYPOINT echo 'trap "env>/.womm-env" exit' >/tmp/trapper; ENV=/tmp/trapper sh -l
-""".encode(),
+        ['docker', 'build', '-q', '-t', tmp_image, '-f', '-', str(basedir)],
+        input=template.encode(),
         check=True
     )
+    try:
+        yield tmp_image
+    finally:
+        subprocess.run(['docker', 'rmi', tmp_image], stdout=subprocess.DEVNULL, check=True)
 
-    print("Make it work!")
-    print("Also make sure our dependencies are installed: perl")
-    cmd = ['docker', 'run', '-it']
-    if mount:
-        cmd += ['-v', f'{cwd}:{cwd}']
-    cmd += ['--name', tmp_image_container, tmp_image_container]
-    subprocess.run(cmd, check=False)
+def update_img(in_name, out_name, mount=False):
+    tmp_container = 'womm-tmpcontainer-' + make_id()
+    tmp_image = 'womm-tmpimage-' + make_id()
 
-    subprocess.run(
-        ['docker', 'commit', tmp_image_container, tmp_image_container],
-        check=True,
-        stdout=subprocess.DEVNULL
-    )
+    try:
+        run_image = in_name
+        while True:
+            cmd = ['docker', 'run', '-it', '-v', '/:/mnt']
+            if mount:
+                cmd += ['-v', f'{cwd}:{cwd}']
+            cmd += ['--name', tmp_container, run_image]
 
-    working = True
-    if working and subprocess.run(
-        ['docker', 'run', '--rm', '--entrypoint=perl', tmp_image_container, '-v'],
-        stdout=subprocess.DEVNULL,
-        check=False
-    ).returncode != 0:
-        print("You didn't install perl!")
-        working = False
+            print("Make it work!")
+            print("Also make sure our dependencies are installed: perl")
+            subprocess.run(cmd, check=False)
+            subprocess.run(['docker', 'commit', tmp_container, tmp_image], check=True)
+            run_image = tmp_image
 
-    if working:
-        working = input("Does it work? y/n\n[y] > ").strip().lower() != 'n'
-    if not working:
-        result = None
-    else:
-        result = get_prefix() + 'womm-image-' + tmp_id
-        subprocess.run(['docker', 'commit', tmp_image_container, result], check=True)
-        subprocess.run(['docker', 'push', result], check=True)
+            if subprocess.run(
+                ['docker', 'run', '--rm', '--entrypoint=perl', tmp_image, '-v'],
+                stdout=subprocess.DEVNULL,
+                check=False
+            ).returncode != 0:
+                print("You didn't install perl!")
+                print("Try again? y/n")
+                if input('[y] > ') == 'n':
+                    return False
+                continue
+            break
 
-    subprocess.run(['docker', 'rm', tmp_image_container], check=True, stdout=subprocess.DEVNULL)
-    subprocess.run(['docker', 'rmi', tmp_image_container], check=True, stdout=subprocess.DEVNULL)
-    return result
 
-def update_img(img_name, mount=False):
-    tmp_id = make_id()
-    tmp_image_container = 'womm-buildertmp-' + tmp_id
-
-    print("Make it work!")
-    cmd = ['docker', 'run', '-it']
-    if mount:
-        cmd += ['-v', f'{cwd}:{cwd}']
-    cmd += ['--name', tmp_image_container, img_name]
-    subprocess.run(cmd, check=True)
-
-    working = input("Does it work? y/n\n[y] > ").lower()
-    if working == 'n':
-        result = False
-    else:
-        result = True
-        subprocess.run(['docker', 'commit', tmp_image_container, img_name], check=True)
-
-    subprocess.run(['docker', 'rm', tmp_image_container], check=True)
-    return result
+        working = input("Does it work? y/n\n[y] > ").lower()
+        if working == 'n':
+            return False
+        else:
+            subprocess.run(['docker', 'tag', tmp_image, out_name], check=True)
+            subprocess.run(['docker', 'push', out_name], check=True)
+            return True
+    finally:
+        # TODO don't airtight-rm the container so that we can recover a crashed session
+        subprocess.run(
+            ['docker', 'rm', tmp_container],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
+        subprocess.run(
+            ['docker', 'rmi', tmp_image],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
 
 def get_share_container():
     return subprocess.run(
@@ -341,15 +343,16 @@ def cmd_setup():
         base_image = input("[%s] > " % img_default)
         if not base_image.strip():
             base_image = img_default
-        img_name = build_image(base_image, mount=share_method != 'none')
-        if not img_name:
-            return
+        img_name = get_prefix() + 'womm-image-' + make_id()
+        with bootstrap_image(base_image) as tmp_image:
+            if not update_img(tmp_image, img_name, mount=share_method != 'none'):
+                return
     else:
+        img_name = existing_cfg['image']
         print("Do you want to edit your image? y/n")
         if input('[y] > ').lower() != 'n':
-            if not update_img(existing_cfg['image'], mount=share_method != 'none'):
+            if not update_img(img_name, img_name, mount=share_method != 'none'):
                 return
-        img_name = existing_cfg['image']
 
     teardown_share()
     if reinitialize_share:
@@ -365,6 +368,7 @@ def cmd_setup():
         "image": img_name,
     })
 
+@contextmanager
 def make_deployment(
         task_id,
         parallelism,
@@ -395,10 +399,12 @@ def make_deployment(
 
     subprocess.run(['kubectl', 'create', '-f', '-'], input=deployment_yml.encode(), check=True, stdout=sys.stderr)
 
-    def cleanup():
+    try:
+        yield
+    finally:
         subprocess.run(['kubectl', 'delete', 'deploy', 'womm-task-' + task_id], check=True, stdout=sys.stderr)
-    atexit.register(cleanup)
 
+@contextmanager
 def watch_deployment(task_id, always_entries, procs_per_pod):
     p = subprocess.Popen(
         [
@@ -421,15 +427,14 @@ def watch_deployment(task_id, always_entries, procs_per_pod):
     )
     thread.start()
 
-    def cleanup():
+    try:
+        while os.stat(fp.name).st_size == 0:
+            time.sleep(0.5)
+
+        yield fp.name
+    finally:
         p.kill()
         fp.close()
-    atexit.register(cleanup)
-
-    while os.stat(fp.name).st_size == 0:
-        time.sleep(0.5)
-
-    return fp.name
 
 def watch_deployment_thread(fp, pipe, always_entries, procs_per_pod):
     fp.write(''.join(f'{x}\n' for x in always_entries))
@@ -543,7 +548,7 @@ def cmd_parallel():
     elif cfg['share_kind'] == 'lazy':
         setup_lazy_share(cfg['share_path'])
 
-    make_deployment(
+    with make_deployment(
         task_id,
         parallelism,
         cfg['image'],
@@ -552,12 +557,10 @@ def cmd_parallel():
         cwd,
         get_server_clusterip() if cfg['share_kind'] != 'none' else None,
         cfg['share_path'] if cfg['share_kind'] != 'none' else None,
-    )
-    sshloginfile = watch_deployment(task_id, always_lines, procs_per_pod)
-    cmd = [str(basedir / 'parallel'), '--sshloginfile', sshloginfile] + parallel_opts
-    r = subprocess.run(cmd, check=False)
-    print('done')
-    time.sleep(100000)
+    ):
+        with watch_deployment(task_id, always_lines, procs_per_pod) as sshloginfile:
+            cmd = [str(basedir / 'parallel'), '--sshloginfile', sshloginfile] + parallel_opts
+            r = subprocess.run(cmd, check=False)
 
     if cfg['share_kind'] in ('eager-2',):
         port = get_server_port()
@@ -589,7 +592,7 @@ def cmd_ssh():
         cmd = ['bash']
     if cmd[0] == '--':
         cmd.pop(0)
-    cmdline = 'export SHELL=sh; ' + ' '.join(cmd)
+    cmdline = 'export SHELL=sh; . /tmp/.womm-env; ' + ' '.join(cmd)
     flags = '-it' if sys.stdout.isatty() else '-i'
     os.execlp('kubectl', 'kubectl', 'exec', flags, pod, '--', 'sh', '-c', cmdline)
 

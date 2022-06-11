@@ -13,3 +13,5 @@ RUN yum install -y epel-release && yum install -y openssh-server fuse-sshfs rsyn
 RUN mkdir -p /data
 ADD ["entrypoint.sh", "allocate_share.sh", "/opt/womm/"]
 ENTRYPOINT ["/opt/womm/entrypoint.sh"]
+
+# TODO remove ssh and communicate exclusively over rsync and kubectl

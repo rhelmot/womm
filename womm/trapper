@@ -1,0 +1,2 @@
+. /tmp/.womm-env
+trap "env | awk -F= '{ st = index(\$0,\"=\"); thing = substr(\$0,st+1); gsub(/\\047/, \"\\047\\\\\\047\\047\", thing); print \"export \" \$1 \"=\\047\" thing \"\047\" }' >/tmp/.womm-env" exit
