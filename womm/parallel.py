@@ -96,18 +96,23 @@ def watch_deployment_thread(fp, pipe, always_entries, procs_per_pod):
     except: # pylint: disable=bare-except
         pass
 
+def usage():
+    print("""\
+Usage: womm parallel [options] -- [command]
+
+Options:
+  --kube-pods N       Spin up N pods to dispatch jobs to
+  --local-procs N     In addition to the kube pods, use N local jobslots
+  --procs-per-pod N   Assign N jobslots per pod (default 1)
+  --kube-cpu N        Reserve N cpu per pod (default 1)
+  --kube-mem N        Reserve N memory per pod (default 512Mi)
+  --help              Show this message :)
+
+Other options will be interpreted by gnu parallel.
+""")
+    sys.exit(0)
+
 def cmd_parallel():
-    cfg = cfg_load()
-    if cfg is None:
-        print("Error: please run `womm setup` to initialize the current directory")
-        sys.exit(1)
-
-    connection_test()
-
-    if not is_share_allocated(cfg['share_path']):
-        print("Error: server has rebooted. Please run `womm setup` to reinitialize share")
-        sys.exit(1)
-
     task_id = make_id()
 
     parallel_opts = sys.argv[2:]
@@ -155,11 +160,22 @@ def cmd_parallel():
             parallel_opts[i] = None
             parallel_opts[i+1] = None
         elif opt in ('--help', '-h', '-?'):
-            pass  # TODO
+            usage()
         elif opt == '--':
             break
     else:
         print('You need to use -- as a separator between the options and the command!')
+        sys.exit(1)
+
+    cfg = cfg_load()
+    if cfg is None:
+        print("Error: please run `womm setup` to initialize the current directory")
+        sys.exit(1)
+
+    connection_test()
+
+    if not is_share_allocated(cfg['share_path']):
+        print("Error: server has rebooted. Please run `womm setup` to reinitialize share")
         sys.exit(1)
 
     if parallelism == 0:
