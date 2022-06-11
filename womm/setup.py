@@ -2,6 +2,62 @@ from contextlib import contextmanager
 
 from .common import *  # pylint: disable=wildcard-import,unused-wildcard-import
 
+def environment_check():
+    success = True
+    try:
+        if subprocess.run(
+            ['docker', 'ps'],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        ).returncode != 0:
+            success = False
+    except FileNotFoundError:
+        success = False
+    if not success:
+        print("We need to be able to run docker commands without root")
+        sys.exit(1)
+
+    try:
+        if subprocess.run(
+            ['kubectl', 'get', 'pods'],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        ).returncode != 0:
+            success = False
+    except FileNotFoundError:
+        success = False
+    if not success:
+        print("We need to have kubectl installed and be connected to a cluster")
+        sys.exit(1)
+
+    try:
+        subprocess.run(
+            ['rsync', '--version'],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+    except FileNotFoundError:
+        success = False
+    if not success:
+        print("We need to have rsync installed")
+        sys.exit(1)
+
+    try:
+        subprocess.run(
+            ['ssh'],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+    except FileNotFoundError:
+        success = False
+    if not success:
+        print("We need to have ssh installed (damn bitch. you live like this?)")
+        sys.exit(1)
+
 @contextmanager
 def bootstrap_image(base_img_name):
     tmp_image = 'womm-buildertmp-' + make_id()
@@ -78,6 +134,7 @@ def update_img(in_name, out_name, mount=False):
 
 def cmd_setup():
     existing_cfg = cfg_load()
+    environment_check()
     connection_test()
 
     reinitialize_share = existing_cfg is None or not is_share_allocated(existing_cfg['share_path'])
