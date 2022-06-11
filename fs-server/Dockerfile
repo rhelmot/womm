@@ -1,14 +1,15 @@
-FROM alpine:latest
+FROM k8s.gcr.io/volume-nfs:0.8
 MAINTAINER Audrey Dutcher <audrey@rhelmot.io>
 
-RUN apk update && apk add vde2 openssh
+# don't expose this container to the public! not a joke!
+RUN mkdir -p /opt/womm /root/.ssh
+RUN chmod 700 /root/.ssh
+ADD ["authorized_keys", "/root/.ssh/"]
+RUN chmod 600 /root/.ssh/authorized_keys
+RUN passwd -u root
+WORKDIR /opt/womm
 
-# https://blog.dhampir.no/content/reverse-sshfs-mounts-fs-push
-# feat. load-bearing nop, bash edition
-CMD sh -lc "dpipe /usr/lib/ssh/sftp-server = ssh -o StrictHostKeyChecking=no -i $SSH_KEYFILE -p $PROXY_PORT $PROXY_HOST sshfs :$SERVER_PATH $PROXY_PATH -o slave | cat"
-
-ENV PROXY_HOST=localhost
-ENV PROXY_PORT=22
-ENV PROXY_PATH=/data
-ENV SERVER_PATH=/data
-ENV SSH_KEYFILE=/id_rsa
+RUN yum install -y epel-release && yum install -y openssh-server fuse-sshfs rsync && yum remove -y epel-release
+RUN mkdir -p /data
+ADD ["entrypoint.sh", "allocate_share.sh", "/opt/womm/"]
+ENTRYPOINT ["/opt/womm/entrypoint.sh"]

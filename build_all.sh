@@ -1,4 +1,7 @@
-docker build -t rhelmot/womm-server ./fs-server
-docker build -t rhelmot/womm-proxy ./fs-proxy
+#!/bin/sh -e
 
-docker push rhelmot/womm-proxy
+docker build -t docker.io/rhelmot/womm-server:latest ./fs-server
+docker build -t docker.io/rhelmot/womm-export:latest ./fs-export
+
+docker push docker.io/rhelmot/womm-server:latest
+docker push docker.io/rhelmot/womm-export:latest

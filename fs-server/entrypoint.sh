@@ -29,7 +29,7 @@ function start()
     # prepare /etc/exports
     for i in "$@"; do
         # fsid=0: needed for NFSv4
-        echo "$i *(rw,fsid=0,insecure,no_root_squash)" >> /etc/exports
+        echo "$i *(rw,insecure,no_root_squash)" >> /etc/exports
         if [ -v gid ] ; then
             chmod 070 $i
             chgrp $gid $i
@@ -70,14 +70,17 @@ function stop()
     exit 0
 }
 
+if [ "$1" -e "stop" ]; then
+    stop
+fi
 
 trap stop TERM
 
-passwd -u root
-ssh-keygen -f /etc/ssh/ssh_host_rsa_key -N ''
-ssh-keygen -f /root/.ssh/id_rsa -N ''
-cp /root/.ssh/id_rsa.pub /root/.ssh/authorized_keys
-/usr/sbin/sshd
+if [ ! -f /etc/ssh/ssh_host_rsa_key ]; then
+    ssh-keygen -f /etc/ssh/ssh_host_rsa_key -N ''
+    /usr/sbin/sshd
+    mkdir -p /data/$(hostname)
+fi
 
 start "$@"
 
