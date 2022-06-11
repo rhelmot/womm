@@ -393,10 +393,10 @@ def make_deployment(
     else:
         deployment_yml = deployment_yml.split('# {{snip here}}')[0]
 
-    subprocess.run(['kubectl', 'create', '-f', '-'], input=deployment_yml.encode(), check=True)
+    subprocess.run(['kubectl', 'create', '-f', '-'], input=deployment_yml.encode(), check=True, stdout=sys.stderr)
 
     def cleanup():
-        subprocess.run(['kubectl', 'delete', 'deploy', 'womm-task-' + task_id], check=True)
+        subprocess.run(['kubectl', 'delete', 'deploy', 'womm-task-' + task_id], check=True, stdout=sys.stderr)
     atexit.register(cleanup)
 
 def watch_deployment(task_id, always_entries, procs_per_pod):
@@ -450,7 +450,7 @@ def watch_deployment_thread(fp, pipe, always_entries, procs_per_pod):
             fp.seek(0)
             fp.truncate()
             fp.write(''.join(f'{x}\n' for x in always_entries))
-            fp.write(''.join(f'{procs_per_pod}/python3 womm.py ssh {pod}\n' for pod in live))
+            fp.write(''.join(f'{procs_per_pod}/{sys.executable} -m womm ssh {pod}\n' for pod in live))
             fp.flush()
     except: # pylint: disable=bare-except
         pass
@@ -554,8 +554,7 @@ def cmd_parallel():
         cfg['share_path'] if cfg['share_kind'] != 'none' else None,
     )
     sshloginfile = watch_deployment(task_id, always_lines, procs_per_pod)
-    cmd = ['/home/audrey/code/parallel-20220522/src/parallel', '--sshloginfile', sshloginfile] + parallel_opts
-    #cmd = ['parallel', '--sshloginfile', sshloginfile] + parallel_opts
+    cmd = [str(basedir / 'parallel'), '--sshloginfile', sshloginfile] + parallel_opts
     r = subprocess.run(cmd, check=False)
     print('done')
     time.sleep(100000)
@@ -619,6 +618,3 @@ def main():
         print('  parallel    run tasks in parallel')
         print('  list        list active filesystem shares')
         print('  delete      tear down a filesystem share')
-
-if __name__ == '__main__':
-    main()
