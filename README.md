@@ -28,6 +28,7 @@ Next, install the runtime dependencies:
 - kubectl, connected to a cluster
 - rsync
 - ssh
+- perl
 
 Next, make sure the WOMM filesystem server is running in your cluster.
 
