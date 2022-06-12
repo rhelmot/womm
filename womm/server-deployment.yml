@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
         - name: womm-server
-          image: rhelmot/womm-server
+          image: rhelmot/womm-server:$VERSION
           imagePullPolicy: Always
           securityContext:
             privileged: true

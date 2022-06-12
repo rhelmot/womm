@@ -76,11 +76,8 @@ fi
 
 trap stop TERM
 
-if [ ! -f /etc/ssh/ssh_host_rsa_key ]; then
-    ssh-keygen -f /etc/ssh/ssh_host_rsa_key -N ''
-    /usr/sbin/sshd
-    mkdir -p /data/$(hostname)
-fi
+mkdir -p /data/$(hostname)
+touch /tmp/.womm-env
 
 start "$@"
 

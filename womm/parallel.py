@@ -186,21 +186,20 @@ def cmd_parallel():
     always_lines = [] if local_procs == 0 else ['%d/:' % local_procs]
 
     if cfg['share_kind'] in ('eager-1', 'eager-2'):
-        port = get_server_port()
         subprocess.run(
             [
                 'rsync',
                 '-azq',
                 '-e',
-                'ssh -i "%s" -p %d -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null' % \
-                        (basedir / 'id_rsa', port),
+                '%s -m womm ssh deploy/womm-server' % sys.executable,
+                '--delete',
                 cwd + '/',
-                'root@localhost:' + cfg['share_path'],
+                ':' + cfg['share_path'],
             ],
             check=True
         )
     elif cfg['share_kind'] == 'lazy':
-        setup_lazy_share(cfg['share_path'])
+        setup_lazy_share(cfg['share_path'], cwd)
 
     with make_deployment(
         task_id,
@@ -217,15 +216,14 @@ def cmd_parallel():
             r = subprocess.run(cmd, check=False)
 
     if cfg['share_kind'] in ('eager-2',):
-        port = get_server_port()
         subprocess.run(
             [
                 'rsync',
                 '-azq',
                 '-e',
-                'ssh -i "%s" -p %d -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null' \
-                        % (basedir / 'id_rsa', port),
-                'root@localhost:' + cfg['share_path'] + '/',
+                '%s -m womm ssh deploy/womm-server' % sys.executable,
+                # it would be really nice to put --delete here but that is SUCH a footgun
+                ':' + cfg['share_path'] + '/',
                 cwd,
             ],
             check=True

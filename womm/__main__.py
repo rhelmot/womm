@@ -1,9 +1,11 @@
 import sys
 import os
+import subprocess
 
 from .setup import cmd_setup
 from .parallel import cmd_parallel
 from .common import basedir
+from . import __version__
 
 def cmd_ssh():
     pod = sys.argv[2]
@@ -18,7 +20,15 @@ def cmd_ssh():
 
 def cmd_server_deployment():
     with open(basedir / 'server-deployment.yml', 'r', encoding='utf-8') as fp:
-        sys.stdout.write(fp.read())
+        sys.stdout.write(fp.read().replace('$VERSION', __version__))
+
+def cmd_build_images():
+    subprocess.run(f'docker build -t docker.io/rhelmot/womm-server:{__version__} ./fs-server', shell=True, check=True)
+    subprocess.run(f'docker build -t docker.io/rhelmot/womm-export:{__version__} ./fs-export', shell=True, check=True)
+
+    subprocess.run(f'docker push docker.io/rhelmot/womm-server:{__version__}', shell=True, check=True)
+    subprocess.run(f'docker push docker.io/rhelmot/womm-export:{__version__}', shell=True, check=True)
+
 
 def main():
     try:
@@ -32,9 +42,11 @@ def main():
         cmd_parallel()
     elif cmd == 'server-deployment':
         cmd_server_deployment()
+    # it's a secret to everyone.
     elif cmd == 'ssh':
-        # it's a secret to everyone.
         cmd_ssh()
+    elif cmd == 'build-images':
+        cmd_build_images()
     else:
         print('Usage: womm [cmd] [parameters]')
         print()

@@ -10,7 +10,7 @@ import json
 import time
 import subprocess
 
-import psutil
+from . import __version__
 
 cfg_path = Path('.womm')
 cwd = os.path.realpath(os.getcwd())
@@ -121,112 +121,66 @@ def get_server_clusterip():
         stdout=subprocess.PIPE,
     ).stdout.decode().strip()
 
-def get_server_port():
-    try:
-        with open(portforward_path, 'r', encoding='utf-8') as fp:
-            pid, port = fp.read().split()
-            pid = int(pid)
-            port = int(port)
-    except FileNotFoundError:
-        pass
-    else:
-        if psutil.pid_exists(pid):
-            return port
-
-    port = random.randrange(30000, 40000)
-    p = subprocess.Popen(
-        [
-            'kubectl',
-            'port-forward',
-            'deploy/womm-server',
-            '--address',
-            'localhost,' + get_local_ip(),
-            '%d:22' % port,
-        ],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
-
-    time.sleep(2)
-    if p.poll() is not None:
-        raise Exception('Failed to port-forward')
-
-    with open(portforward_path, 'w', encoding='utf-8') as fp:
-        fp.write('%d %d\n' % (p.pid, port))
-
-    return port
-
 def allocate_share():
-    port = get_server_port()
     return subprocess.run(
-        [
-            'ssh',
-            '-q',
-            '-p',
-            str(port),
-            '-i',
-            str(basedir / 'id_rsa'),
-            '-o',
-            'StrictHostKeyChecking=no',
-            '-o',
-            'UserKnownHostsFile=/dev/null',
-            'root@localhost',
-            '/opt/womm/allocate_share.sh',
-        ],
+        ['kubectl', 'exec', '-i', 'deploy/womm-server', '--', '/opt/womm/allocate_share.sh'],
         check=True,
-        stdout=subprocess.PIPE
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
     ).stdout.decode().strip()
 
 def is_share_allocated(path):
-    port = get_server_port()
     return subprocess.run(
-        [
-            'ssh',
-            '-q',
-            '-p',
-            str(port),
-            '-i',
-            str(basedir / 'id_rsa'),
-            '-o',
-            'StrictHostKeyChecking=no',
-            '-o',
-            'UserKnownHostsFile=/dev/null',
-            'root@localhost',
-            'ls',
-            path,
-        ],
+        ['kubectl', 'exec', '-i', 'deploy/womm-server', '--', 'ls', path],
         check=False,
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     ).returncode == 0
 
-def setup_lazy_share(share_path):
+def setup_lazy_share(remote_path, local_path):
     if get_share_container():
         return
 
-    port = get_server_port()
+    p1 = subprocess.Popen(  # pylint: disable=consider-using-with
+        ['kubectl', 'exec', '-i', 'deploy/womm-server', '--', 'sshfs', ':/data', remote_path, '-o', 'slave'],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+    )
 
-    subprocess.run(
+    p2 = subprocess.Popen(  # pylint: disable=consider-using-with
         [
             'docker',
             'run',
-            '-d',
-            '--rm',
-            '--privileged',  # yikes! sshfs fails without this
+            '-i',
+            '-v',
+            '%s:/data' % (local_path,),
             '--label',
-            'womm-lazy-share=' + cwd,
-            '-v',
-            '%s:/id_rsa' % (basedir / 'id_rsa',),
-            '-v',
-            '%s:/data' % (cwd,),
-            '-e',
-            'SERVER_HOST=' + get_local_ip(),
-            '-e',
-            'SERVER_PORT=%d' % (port,),
-            '-e',
-            'SERVER_PATH=' + share_path,
-            'docker.io/rhelmot/womm-export',
+            'womm-lazy-share=' + local_path,
+            'rhelmot/womm-export:' + __version__,
+            '/usr/lib/ssh/sftp-server',
         ],
-        check=True,
+        stdin=p1.stdout,
+        stdout=p1.stdin,
+        stderr=subprocess.DEVNULL,
     )
+
+    time.sleep(0.5)
+    if p1.poll() is not None or p2.poll() is not None:
+        raise Exception("Could not start rmount connection - processes died.")
+
+def choice(options, default=None):
+    if not callable(options):
+        xx = options
+        options = lambda c: c in xx
+
+    while True:
+        if default is None:
+            result = input('> ')
+        else:
+            result = input('[%s] > ' % default)
+        if not result:
+            return default
+        if options(result):
+            return result

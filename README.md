@@ -27,7 +27,6 @@ Next, install the runtime dependencies:
 - docker, configured to accept commands without root
 - kubectl, connected to a cluster
 - rsync
-- ssh
 - perl
 
 Next, make sure the WOMM filesystem server is running in your cluster.
