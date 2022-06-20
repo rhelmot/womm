@@ -193,8 +193,6 @@ deployment.apps/womm-task-aolsrxqr created
 asdf
 some
 files
-womm
-womm.egg-info
 deployment.apps "womm-task-aolsrxqr" deleted
 [11:41:54 AM] $
 ```
