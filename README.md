@@ -13,8 +13,8 @@ This essentially boils down to three pieces of technology, tied together as clos
 
 That's it! Sound good? Read on.
 
-Workflow
---------
+Installation
+------------
 
 First, install WOMM:
 
@@ -35,7 +35,10 @@ Next, make sure the WOMM filesystem server is running in your cluster.
 $ womm server-deployment | kubectl create -f -
 ```
 
-Next, navigate to the directory with the application you would like to distribute:
+Configuration
+-------------
+
+Navigate to the directory with the application you would like to distribute:
 
 ```
 $ cd proj/supercool
@@ -86,7 +89,7 @@ sha256:4a39d88233e612e76223ff2e25a1e2f001d9ecddd72dd244666a417498002fea
 Does it work? y/n
 [y] > y
 Using default tag: latest
-The push refers to repository [us-west4-docker.pkg.dev/angr-ci/defcon/womm-image-awtmaomf]
+The push refers to repository [docker.io/rhelmot/womm-image-awtmaomf]
 cb36e0e3954b: Pushed
 ad4edcda1e99: Pushed
 144adb730393: Pushed
@@ -99,13 +102,29 @@ f469e45a6f33
 ```
 
 And that's it! You're ready to party.
-Use `womm parallel` the same way you would use normal `parallel` (if you're not familiar with that, it's a lot like xargs).
+
+Give me a shell on a 32 core machine!
+-------------------------------------
+
+Okay.
+
+```
+$ womm shell --kube-cpu 32 --kube-mem 16Gi
+```
+
+I want more cores!
+------------------
+
+Okay. You can use the above up to a certain point but if you go too far you won't be able to schedule your container - no machine on the cluster will have enough spare cores at once to give you your shell.
+If you want more (and clearly you do), you need to express your desire for compute in a way that can be distributed across multiple machines.
+Enter GNU parallel.
+
+Use `womm parallel` the same way you would use the normal GNU `parallel` command (if you're not familiar with it, it's a lot like xargs).
 A small caveat - you are required to specify the `--kube-pods` parameter, and you are required to separate your input from your options with `--`.
 Other than that, go nuts!
 
 ```
 $ find -type f | womm parallel --kube-pods 10 -- wc -l {}
-9015f6fb924fc5710bd3ded9874333b548eeff599ee726f4a9fcb3a890cbbe88
 deployment.apps/womm-task-prnmnvzi created
 101 ./README.md
 340 ./topsecret.sh
@@ -115,6 +134,85 @@ deployment.apps/womm-task-prnmnvzi created
 deployment.apps "womm-task-prnmnvzi" deleted
 $
 ```
+
+Options
+-------
+
+```
+$ womm parallel --help
+Usage: womm parallel [options] -- [command]
+
+Options:
+  --kube-pods N       Spin up N pods to dispatch jobs to
+  --local-procs N     In addition to the kube pods, use N local jobslots
+  --procs-per-pod N   Assign N jobslots per pod (default 1)
+  --kube-cpu N        Reserve N cpus per pod (default 1)
+  --kube-mem N        Reserve N memory per pod (default 512Mi)
+  --help              Show this message :)
+
+Other options will be interpreted by gnu parallel.
+```
+
+A "pod" is kubernetes' unit of resource allocation.
+It represents (more or less) a docker container running on some remote server with some usage quotas.
+WOMM works by creating a set of pods and providing their login information to GNU parallel.
+You can adjust the resources each pod is allocated with the `--kube-cpu` and `--kube-mem` flags.
+You can also adjust the number of jobs that will be assigned to a single pod at once with the `--procs-per-pod` option.
+As far as I know, this will only be useful in edge cases related to resource constraints.
+Finally, if you want just a little extra kick to your analysis, you can run `--local-procs` to add the local machine to the worker pool.
+Be careful doing this if your application writes data to disk!
+
+How the filesystem share works
+------------------------------
+
+When you run `womm setup`, you are given four options for how to synchronize your local filesystem with the worker machines.
+This determines how the connection between your local machine and the WOMM filesystem server happens.
+The filesystem server serves NFS shares that each worker pod mounts in order to receive your local filesystem data.
+
+### Lazy share
+
+This is the recommended kind. It entails the filesystem server opening a sshfs connection to your local machine.
+This performs well if you're making lots of changes to your filesystem data between runs, if your filesystem data is very large, or if you are producing results on the filesystem.
+However, it will introduce some synchronization latency in changes propogating to either end, since there are multiple disjoint levels of caching happening.
+This can lead to some unintuitive results related to event ordering:
+
+```
+[11:41:28 AM] $ womm parallel --kube-pods 1 -- ls ::: .
+deployment.apps/womm-task-wdrwdtqk created
+some
+files
+deployment.apps "womm-task-wdrwdtqk" deleted
+[11:41:36 AM] $ touch asdf
+[11:41:37 AM] $ womm parallel --kube-pods 1 -- ls ::: .
+deployment.apps/womm-task-tyzcedvv created
+some
+files
+deployment.apps "womm-task-tyzcedvv" deleted
+[11:41:49 AM] $ womm parallel --kube-pods 1 -- ls ::: .
+deployment.apps/womm-task-aolsrxqr created
+asdf
+some
+files
+womm
+womm.egg-info
+deployment.apps "womm-task-aolsrxqr" deleted
+[11:41:54 AM] $
+```
+
+I don't know of a better solution to this other than "waiting for changes to propagate" or "manually run sync(1) to force flushes".
+
+### Eager share
+
+The eager share works by establishing a rsync connection to the filesystem server before any jobs are started and synchronizing the current directory.
+This is obviously more robust than the lazy share approach, but creates some very complicated problems related to synchronizing changes back to your local machine, since there is now more than one source of truth for the filesystem data that must be merged offline.
+
+To handle this, there are two kinds of eager share - no syncback, and syncback on completion.
+No syncback will simply discard any changes which are made on the filesystem server.
+Syncback on complete will open an additional rsync connection to the filesystem server once all jobs have completed and pull any changes back to your local machine.
+This is dangerous!
+**If you make any changes to your application while it is running in this mode, they will be reverted when it finishes running.**
+Note that the syncback operation will never delete files from your local machine, only modify and create.
+This is too much of a footgun to enable.
 
 Licensing
 ---------

@@ -1,12 +1,12 @@
 from contextlib import contextmanager
 import tempfile
 import threading
+import re
 
 from .common import *  # pylint: disable=wildcard-import,unused-wildcard-import
 
 @contextmanager
 def make_deployment(
-        task_id,
         parallelism,
         image,
         job_mem,
@@ -15,6 +15,7 @@ def make_deployment(
         nfs_server,
         nfs_path,
     ):
+    task_id = make_id()
     with open(basedir / 'task-deployment.yml', 'r', encoding='utf-8') as fp:
         deployment_yml = fp.read()
 
@@ -36,7 +37,7 @@ def make_deployment(
     subprocess.run(['kubectl', 'create', '-f', '-'], input=deployment_yml.encode(), check=True, stdout=sys.stderr)
 
     try:
-        yield
+        yield task_id
     finally:
         subprocess.run(['kubectl', 'delete', 'deploy', 'womm-task-' + task_id], check=True, stdout=sys.stderr)
 
@@ -104,7 +105,7 @@ Options:
   --kube-pods N       Spin up N pods to dispatch jobs to
   --local-procs N     In addition to the kube pods, use N local jobslots
   --procs-per-pod N   Assign N jobslots per pod (default 1)
-  --kube-cpu N        Reserve N cpu per pod (default 1)
+  --kube-cpu N        Reserve N cpus per pod (default 1)
   --kube-mem N        Reserve N memory per pod (default 512Mi)
   --help              Show this message :)
 
@@ -112,9 +113,21 @@ Other options will be interpreted by gnu parallel.
 """)
     sys.exit(0)
 
-def cmd_parallel():
-    task_id = make_id()
+def shell_usage():
+    print("""\
+Usage: womm shell [options] -- [command]
 
+Options:
+  --local             Run the shell locally instead of remotely. Other args will have no effect.
+  --kube-cpu N        Reserve N cpus per pod (default 4)
+  --kube-mem N        Reserve N memory per pod (default 1Gi)
+  --help              Show this message :)
+
+Other options will be interpreted by gnu parallel.
+""")
+    sys.exit(0)
+
+def cmd_parallel():
     parallel_opts = sys.argv[2:]
     parallelism = 0
     cpu = '1000m'
@@ -149,14 +162,14 @@ def cmd_parallel():
             cpu = opt.split('=', 1)[1]
             parallel_opts[i] = None
         elif opt == '--kube-cpu':
-            cpu = next(iterable)[0]
+            cpu = next(iterable)[1]
             parallel_opts[i] = None
             parallel_opts[i+1] = None
         elif opt.startswith('--kube-mem='):
             mem = opt.split('=', 1)[1]
             parallel_opts[i] = None
         elif opt == '--kube-mem':
-            mem = next(iterable)[0]
+            mem = next(iterable)[1]
             parallel_opts[i] = None
             parallel_opts[i+1] = None
         elif opt in ('--help', '-h', '-?'):
@@ -185,6 +198,104 @@ def cmd_parallel():
     parallel_opts = [x for x in parallel_opts if x is not None]
     always_lines = [] if local_procs == 0 else ['%d/:' % local_procs]
 
+    with womm_session(cfg, mem, cpu, always_lines, parallelism, procs_per_pod) as sshloginfile:
+        cmd = [str(basedir / 'parallel'), '--sshloginfile', sshloginfile] + parallel_opts
+        sys.exit(subprocess.run(cmd, check=False).returncode)
+
+def cmd_shell():
+    cpu = '1000m'
+    mem = '1Gi'
+    local = False
+    opts = sys.argv[2:]
+    iterable = iter(opts)
+    for opt in iterable:
+        if opt.startswith('--kube-cpu='):
+            cpu = opt.split('=', 1)[1]
+        elif opt == '--kube-cpu':
+            cpu = next(iterable)
+        elif opt.startswith('--kube-mem='):
+            mem = opt.split('=', 1)[1]
+        elif opt == '--kube-mem':
+            mem = next(iterable)
+        elif opt == '--local':
+            local = True
+        elif opt in ('--help', '-h', '-?'):
+            shell_usage()
+        elif opt == '--':
+            break
+        else:
+            shell_usage()
+
+    remaining = list(iterable)
+
+    cfg = cfg_load()
+    if cfg is None:
+        print("Error: please run `womm setup` to initialize the current directory")
+        sys.exit(1)
+
+    if local:
+        tmp_container = 'womm-tmpcontainer-' + make_id()
+        cmd = ['docker', 'run', '-it', '--name', tmp_container]
+        if cfg['share_kind'] != 'none':
+            cmd += ['-v', f'{cwd}:{cwd}']
+        cmd += [cfg['image']]
+        try:
+            subprocess.run(cmd, check=False)
+            r = subprocess.run(
+                ['docker', 'diff', tmp_container],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+            if r.stderr:
+                print(r.stderr)
+                sys.exit(1)
+            changed = {line.split()[1] for line in r.stdout.splitlines()}
+            blacklist = [
+                re.compile(rb'/\.bash_history$'),
+                re.compile(rb'/\.ash_history$'),
+                re.compile(rb'/\.zsh_history$'),
+                re.compile(rb'^/tmp/\.womm-env$'),
+            ]
+
+            for blacklist_line in blacklist:
+                while True:
+                    for changed_file in changed:
+                        if blacklist_line.search(changed_file):
+                            pathparts = changed_file.split(b'/')
+                            changed = {line for line in changed if line.split(b'/') != pathparts[:line.count(b'/') + 1]}
+                            break
+                    else:
+                        break
+
+            if changed:
+                print('It looks like you made changes to the container. Would you like to commit them? y/n')
+                if choice(['y', 'n'], 'y') == 'y':
+                    subprocess.run(['docker', 'commit', tmp_container, cfg['image']], check=True)
+                    subprocess.run(['docker', 'push', cfg['image']], check=True)
+        finally:
+            subprocess.run(['docker', 'rm', tmp_container], check=False)
+    else:
+        connection_test()
+
+        if not is_share_allocated(cfg['share_path']):
+            print("Error: server has rebooted. Please run `womm setup` to reinitialize share")
+            sys.exit(1)
+
+        with womm_session(cfg, mem, cpu, [], 1, 1) as sshloginfile:
+            cmd = open(sshloginfile).read().split('/', 1)[1].strip()
+            subprocess.run(cmd, shell=True, check=False)
+
+
+@contextmanager
+def womm_session(
+    cfg,
+    mem,
+    cpu,
+    always_lines,
+    kube_pods,
+    procs_per_pod
+):
     if cfg['share_kind'] in ('eager-1', 'eager-2'):
         subprocess.run(
             [
@@ -202,18 +313,16 @@ def cmd_parallel():
         setup_lazy_share(cfg['share_path'], cwd)
 
     with make_deployment(
-        task_id,
-        parallelism,
+        kube_pods,
         cfg['image'],
         mem,
         cpu,
         cwd,
         get_server_clusterip() if cfg['share_kind'] != 'none' else None,
         cfg['share_path'] if cfg['share_kind'] != 'none' else None,
-    ):
+    ) as task_id:
         with watch_deployment(task_id, always_lines, procs_per_pod) as sshloginfile:
-            cmd = [str(basedir / 'parallel'), '--sshloginfile', sshloginfile] + parallel_opts
-            r = subprocess.run(cmd, check=False)
+            yield sshloginfile
 
     if cfg['share_kind'] in ('eager-2',):
         subprocess.run(
@@ -228,4 +337,3 @@ def cmd_parallel():
             ],
             check=True
         )
-    sys.exit(r.returncode)

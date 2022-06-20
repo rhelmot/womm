@@ -3,7 +3,7 @@ import os
 import subprocess
 
 from .setup import cmd_setup
-from .parallel import cmd_parallel
+from .parallel import cmd_parallel, cmd_shell
 from .common import basedir
 from . import __version__
 
@@ -11,7 +11,7 @@ def cmd_ssh():
     pod = sys.argv[2]
     cmd = sys.argv[3:]
     if not cmd:
-        cmd = ['bash']
+        cmd = ['bestsh']
     if cmd[0] == '--':
         cmd.pop(0)
     cmdline = 'export SHELL=sh; . /tmp/.womm-env; ' + ' '.join(cmd)
@@ -40,6 +40,8 @@ def main():
         cmd_setup()
     elif cmd == 'parallel':
         cmd_parallel()
+    elif cmd == 'shell':
+        cmd_shell()
     elif cmd == 'server-deployment':
         cmd_server_deployment()
     # it's a secret to everyone.
@@ -53,6 +55,7 @@ def main():
         print('Commands:')
         print('  setup       configure an image for the current directory')
         print('  parallel    run tasks in parallel')
+        print('  shell       get a shell in your execution environment')
         print('  server-deployment')
         print('              print the kubernetes yaml for the file server')
 
