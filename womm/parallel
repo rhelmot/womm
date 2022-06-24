@@ -2654,7 +2654,7 @@ sub check_invalid_option_combinations() {
 
 sub init_globals() {
     # Defaults:
-    $Global::version = 20220522;
+    $Global::version = 20220622;
     $Global::progname = 'parallel';
     $::name = "GNU Parallel";
     $Global::infinity = 2**31;
@@ -2731,7 +2731,13 @@ sub init_globals() {
 	 # Bash ${a%%def}
 	 '{%%([^}]+?)}' => 's/$$1$//;',
 	 # Bash ${a/def/ghi} ${a/def/}
-	 '{/([^}]+?)/([^}]*?)}' => 's/$$1/$$2/;',
+	 '{/([^#%}/]+?)/([^}]*?)}' => 's/$$1/$$2/;',
+	 # Bash ${a/#def/ghi} ${a/#def/}
+	 '{/#([^}]+?)/([^}]*?)}' => 's/^$$1/$$2/g;',
+	 # Bash ${a/%def/ghi} ${a/%def/}
+	 '{/%([^}]+?)/([^}]*?)}' => 's/$$1$/$$2/g;',
+	 # Bash ${a//def/ghi} ${a//def/}
+	 '{//([^}]+?)/([^}]*?)}' => 's/$$1/$$2/g;',
 	 # Bash ${a^a}
 	 '{^([^}]+?)}' => 's/^($$1)/uc($1)/e;',
 	 # Bash ${a^^a}
@@ -4577,7 +4583,15 @@ sub parse_sshlogin() {
     if(not @Global::sshlogin) { @Global::sshlogin = (":"); }
     for my $sshlogin (@Global::sshlogin) {
 	# Split up -S sshlogin,sshlogin
+	# Parse ,, and \, as , but do not split on that
+	#   -S "ssh -J jump1,,jump2 host1,host2" =>
+	#     ssh -J jump1,jump2 host1
+	#     host2
+	# Protect \, and ,, as \0
+	$sshlogin =~ s/\\,|,,/\0/g;
 	for my $s (split /,|\n/, $sshlogin) {
+	    # Replace \0 => ,
+	    $s =~ s/\0/,/g;
 	    if ($s eq ".." or $s eq "-") {
 		# This may add to @Global::sshlogin - possibly bug
 		read_sshloginfile(expand_slf_shorthand($s));
@@ -5511,8 +5525,8 @@ sub usage() {
 	 "If you use programs that use GNU Parallel to process data for an article in a",
 	 "scientific publication, please cite:",
 	 "",
-	 "  Tange, O. (2022, May 22). GNU Parallel 20220522 ('NATO').",
-	 "  Zenodo. https://doi.org/10.5281/zenodo.6570228",
+	 "  Tange, O. (2022, June 22). GNU Parallel 20220622 ('Bongbong').",
+	 "  Zenodo. https://doi.org/10.5281/zenodo.6682930",
 	 "",
 	 # Before changing these lines,	 please read
 	 # https://www.gnu.org/software/parallel/parallel_design.html#citation-notice
@@ -5544,8 +5558,8 @@ sub citation_notice() {
 	     "If you use programs that use GNU Parallel to process data for an article in a",
 	     "scientific publication, please cite:",
 	     "",
-	     "  Tange, O. (2022, May 22). GNU Parallel 20220522 ('NATO').",
-	     "  Zenodo. https://doi.org/10.5281/zenodo.6570228",
+	     "  Tange, O. (2022, June 22). GNU Parallel 20220622 ('Bongbong').",
+	     "  Zenodo. https://doi.org/10.5281/zenodo.6682930",
 	     "",
 	     # Before changing these line,  please read
 	     # https://www.gnu.org/software/parallel/parallel_design.html#citation-notice and
@@ -5558,7 +5572,7 @@ sub citation_notice() {
 	     "More about funding GNU Parallel and the citation notice:",
 	     "https://www.gnu.org/software/parallel/parallel_design.html#citation-notice",
 	     "",
-	     "To silence this citation notice: run 'parallel --citation' once.",
+	     "To silence this citation notice: run 'womm parallel --citation' once.",
 	     ""
 	    );
 	mkdir $Global::config_dir;
@@ -5578,7 +5592,7 @@ sub citation_notice() {
 	    if($runs >= 10) {
 		::status("Come on: You have run parallel $runs times. ".
 			 "Isn't it about time ",
-			 "you run 'parallel --citation' once to silence ".
+			 "you run 'womm parallel --citation' once to silence ".
 			 "the citation notice?",
 			 "");
 	    }
@@ -5652,7 +5666,7 @@ sub version() {
 	 "",
 	 "Web site: https://www.gnu.org/software/${Global::progname}\n",
 	 "When using programs that use GNU Parallel to process data for publication",
-	 "please cite as described in 'parallel --citation'.\n",
+	 "please cite as described in 'womm parallel --citation'.\n",
 	);
 }
 
@@ -5672,20 +5686,20 @@ sub citation() {
 	"If you use programs that use GNU Parallel to process data for an article in a",
 	"scientific publication, please cite:",
 	"",
-	"\@software{tange_2022_6570228,",
+	"\@software{tange_2022_6682930,",
 	"      author       = {Tange, Ole},",
-	"      title        = {GNU Parallel 20220522 ('NATO')},",
-	"      month        = May,",
+	"      title        = {GNU Parallel 20220622 ('Bongbong')},",
+	"      month        = Jun,",
 	"      year         = 2022,",
 	"      note         = {{GNU Parallel is a general parallelizer to run",
 	"                       multiple serial command line programs in parallel",
 	"                       without changing them.}},",
 	"      publisher    = {Zenodo},",
-	"      doi          = {10.5281/zenodo.6570228},",
-	"      url          = {https://doi.org/10.5281/zenodo.6570228}",
+	"      doi          = {10.5281/zenodo.6682930},",
+	"      url          = {https://doi.org/10.5281/zenodo.6682930}",
 	"}",
 	"",
-	"(Feel free to use \\nocite{tange_2022_6570228})",
+	"(Feel free to use \\nocite{tange_2022_6682930})",
 	"",
 	# Before changing these lines, please read
 	# https://www.gnu.org/software/parallel/parallel_design.html#citation-notice and

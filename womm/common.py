@@ -39,7 +39,10 @@ def get_prefix():
 
     print('What is a prefix of a docker image name that you are authorized to push to a secure location?')
     print("e.g. 'us-west4-docker.pkg.dev/angr-ci/defcon/'")
-    prefix = input("> ").strip()
+    print("e.g. 'docker.io/rhelmot/' (not recommended - your images will be public)")
+    prefix = ''
+    while not prefix:
+        prefix = input("> ").strip()
 
     with open(prefix_path, 'w', encoding='utf-8') as fp:
         fp.write(prefix + '\n')
@@ -102,6 +105,8 @@ def connection_test():
         stdin=subprocess.DEVNULL,
     ).returncode != 0:
         print("You are offline, or the server is down. Uh oh!")
+        print("Is kubectl configured to use the right namespace?")
+        print("If you're just getting started, you may want: 'womm cluster-config | kubectl create -f -'")
         sys.exit(1)
 
 def get_server_clusterip():

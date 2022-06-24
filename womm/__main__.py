@@ -3,7 +3,7 @@ import os
 
 from .setup import cmd_setup
 from .parallel import cmd_parallel, cmd_shell, cmd_leader, cmd_logs, cmd_finish, cmd_status
-from .common import basedir
+from .common import basedir, prefix_path
 from . import __version__
 
 def cmd_ssh():
@@ -21,6 +21,11 @@ def cmd_cluster_setup():
     with open(basedir / 'cluster-setup.yml', 'r', encoding='utf-8') as fp:
         sys.stdout.write(fp.read().replace('$VERSION', __version__))
 
+def cmd_clear_prefix():
+    try:
+        os.remove(prefix_path)
+    except FileNotFoundError:
+        pass
 
 def main():
     if '--version' in sys.argv:
@@ -46,6 +51,8 @@ def main():
         cmd_finish()
     elif cmd == 'cluster-setup':
         cmd_cluster_setup()
+    elif cmd == 'clear-prefix':
+        cmd_clear_prefix()
     # it's a secret to everyone.
     elif cmd == 'ssh':
         cmd_ssh()
@@ -63,6 +70,8 @@ def main():
         print('  finish      clean up resources for an async task')
         print('  cluster-setup')
         print('              print the kubernetes yaml to prepare the cluster')
+        print('  clear-prefix')
+        print('              reset the docker repository to push images to')
 
 if __name__ == '__main__':
     main()

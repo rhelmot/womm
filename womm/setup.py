@@ -91,6 +91,8 @@ def update_img(in_name, out_name, mount=False):
                 cmd += ['-v', f'{cwd}:{cwd}']
             cmd += ['--name', tmp_container, run_image]
 
+            print("This is a *local* shell where any dependencies you install will be saved.")
+            print("The goal is that if your application works here, it will work on the cloud too.")
             print("Make it work!")
             print("Also make sure our dependencies are installed: perl")
             subprocess.run(cmd, check=False)

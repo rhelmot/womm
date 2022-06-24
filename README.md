@@ -75,6 +75,8 @@ What is a prefix of a docker image name that you are authorized to push to a sec
 e.g. 'us-west4-docker.pkg.dev/angr-ci/defcon/'
 > docker.io/rhelmot/
 sha256:5852d80f97499322f2acd170f0dc909661171ad56dddd61dbb6fbc7ab4a2c6ae
+This is a *local* shell where any dependencies you install will be saved.
+The goal is that if your application works here, it will work on the cloud too.
 Make it work!
 Also make sure our dependencies are installed: perl
 $
@@ -84,7 +86,7 @@ Some notes:
 - This shell has your current directory mounted in as, uh, your current directory.
   This is the same as it will be during actual execution.
 - The command to "make it work" is prudent. Do make sure to test your application and only quit the shell once it works.
-- If you need to _reference_ content from your host fileystem, it's mounted at /mnt. This will **not** be there during actual execution.
+- If you need to _reference_ content from your host filesystem, it's mounted at /mnt. This will **not** be there during actual execution.
 - Any environment variables you export from this shell will make their way into the runtime environment.
 
 After quitting the shell, WOMM will perform a quick dependency check and then ask you whether your application works:
@@ -174,6 +176,8 @@ The `--async` flag changes the operation of WOMM to allow tasks to operate indep
 If provided, the `womm` command will terminate when the task is started after printing instructions for monitoring it.
 Asynchronous tasks cannot be run with lazy filesystem shares (see below).
 
+See below for discussion of the `--citation` flag.
+
 Cleaning up
 -----------
 
@@ -250,6 +254,20 @@ This is dangerous!
 **If there are any clock discrepancies between your local machine and the cluster, any changes you make to your application while it is running will be reverted when it is finished.**
 Note that the syncback operation will never delete files from your local machine, only modify and create.
 This is too much of a footgun to enable.
+
+Citing GNU parallel
+-------------------
+
+If you are using WOMM for research, you should cite GNU parallel in your text.
+GNU parallel has an mildly annoying but entirely necessary mechanism to ensure this, by printing a message to the tty until you use a specific flag to promise your citation.
+To access it through WOMM, run:
+
+```
+$ womm parallel --citation
+```
+
+It will ask you to type "will cite".
+If you are not using WOMM for research, feel free to claim you will cite parallel anyway.
 
 Licensing
 ---------

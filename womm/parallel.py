@@ -155,9 +155,11 @@ Options:
   --kube-mem N        Reserve N memory per pod (default 512Mi)
   --async             Run the coordinator in the cluster, requiring manual log collection and
                       cleanup, but adding resilience against network failures
+  --citation          Silence the GNU parallel citation message
   --help              Show this message :)
 
 Other options will be interpreted by gnu parallel.
+See https://www.gnu.org/software/parallel/man.html
 """)
     sys.exit(0)
 
@@ -170,10 +172,26 @@ Options:
   --kube-cpu N        Reserve N cpus per pod (default 4)
   --kube-mem N        Reserve N memory per pod (default 1Gi)
   --help              Show this message :)
-
-Other options will be interpreted by gnu parallel.
 """)
     sys.exit(0)
+
+def int_arg(s, arg):
+    try:
+        return int(s)
+    except ValueError:
+        print('Expected integer argument to %s, got %s' % (arg, s))
+        sys.exit(1)
+
+def next_arg(iterable, arg):
+    try:
+        r = next(iterable)
+        if r == '--':
+            print('Expected argument to %s, got --' % (arg,))
+            sys.exit(1)
+        return r
+    except StopIteration:
+        print('Expected argument to %s, got nothing' % (arg,))
+        sys.exit(1)
 
 def cmd_parallel():
     parallel_opts = sys.argv[2:]
@@ -183,47 +201,50 @@ def cmd_parallel():
     local_procs = 0
     procs_per_pod = 1
     async_ = False
+    citation = False
 
     iterable = iter(enumerate(parallel_opts))
     for i, opt in iterable:
         if opt.startswith('--kube-pods='):
-            parallelism = int(opt.split('=', 1)[1])
+            parallelism = int_arg(opt.split('=', 1)[1], '--kube-pods')
             parallel_opts[i] = None
         elif opt == '--kube-pods':
-            parallelism = int(next(iterable)[1])
+            parallelism = int_arg(next_arg(iterable, '--kube-pods')[1], '--kube-pods')
             parallel_opts[i] = None
             parallel_opts[i+1] = None
         elif opt.startswith('--local-procs='):
-            local_procs = int(opt.split('=', 1)[1])
+            local_procs = int_arg(opt.split('=', 1)[1], '--local-procs')
             parallel_opts[i] = None
         elif opt == '--local-procs':
-            local_procs = int(next(iterable)[1])
+            local_procs = int_arg(next_arg(iterable, '--local-procs')[1], '--local-procs')
             parallel_opts[i] = None
             parallel_opts[i+1] = None
         elif opt.startswith('--procs-per-pod='):
-            procs_per_pod = int(opt.split('=', 1)[1])
+            procs_per_pod = int_arg(opt.split('=', 1)[1], '--procs-per-pod')
             parallel_opts[i] = None
         elif opt == '--procs-per-pod':
-            procs_per_pod = int(next(iterable)[1])
+            procs_per_pod = int_arg(next_arg(iterable, '--procs-per-pod')[1], '--procs-per-pod')
             parallel_opts[i] = None
             parallel_opts[i+1] = None
         elif opt.startswith('--kube-cpu='):
             cpu = opt.split('=', 1)[1]
             parallel_opts[i] = None
         elif opt == '--kube-cpu':
-            cpu = next(iterable)[1]
+            cpu = next_arg(iterable, '--kube-cpu')[1]
             parallel_opts[i] = None
             parallel_opts[i+1] = None
         elif opt.startswith('--kube-mem='):
             mem = opt.split('=', 1)[1]
             parallel_opts[i] = None
         elif opt == '--kube-mem':
-            mem = next(iterable)[1]
+            mem = next_arg(iterable, '--kube-mem')[1]
             parallel_opts[i] = None
             parallel_opts[i+1] = None
         elif opt == '--async':
             async_ = True
             parallel_opts[i] = None
+        elif opt == '--citation':
+            sys.exit(subprocess.run([basedir / 'parallel', '--citation'], check=False).returncode)
         elif opt in ('--help', '-h', '-?'):
             usage()
         elif opt == '--':
@@ -244,7 +265,7 @@ def cmd_parallel():
         sys.exit(1)
 
     if parallelism == 0:
-        print('You need to specify --kube-pods - otherwise why are you using this program?')
+        print('You need to specify --kube-pods <num> - otherwise why are you using this program?')
         sys.exit(1)
 
     if async_ and local_procs != 0:
