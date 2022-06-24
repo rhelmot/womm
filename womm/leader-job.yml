@@ -1,0 +1,32 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: womm-leader-$ID
+  annotations:
+    womm-cwd: "$PWD"
+    womm-host: "$HOST"
+    womm-controller-pid: "$CONTROLLER_PID"
+    womm-cmd: "$CMD"
+spec:
+  template:
+    spec:
+      serviceAccountName: womm-leader
+      restartPolicy: Never
+      containers:
+      - name: womm-leader-$ID
+        image: rhelmot/womm-leader:$VERSION
+        imagePullPolicy: Always
+        stdin: true
+        stdinOnce: true
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "10m"
+        command:
+        - 'sh'
+        - '-c'
+        - |
+            cat >/tmp/womm-stdin
+            python3 -m womm leader $ID $PROCS_PER_POD $ARGS </tmp/womm-stdin >/tmp/womm-stdout 2>/tmp/womm-stderr
+            touch /tmp/womm-complete
+            sleep 100000000

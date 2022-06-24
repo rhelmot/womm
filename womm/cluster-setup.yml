@@ -55,3 +55,35 @@ spec:
       port: 111
   selector:
     app: womm-server
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: womm-leader
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["delete"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["create"]
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: womm-leader
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: womm-leader
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: womm-leader
+subjects:
+  - kind: ServiceAccount
+    name: womm-leader

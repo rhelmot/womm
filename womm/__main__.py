@@ -1,9 +1,8 @@
 import sys
 import os
-import subprocess
 
 from .setup import cmd_setup
-from .parallel import cmd_parallel, cmd_shell
+from .parallel import cmd_parallel, cmd_shell, cmd_leader, cmd_logs, cmd_finish, cmd_status
 from .common import basedir
 from . import __version__
 
@@ -18,19 +17,16 @@ def cmd_ssh():
     flags = '-it' if sys.stdout.isatty() else '-i'
     os.execlp('kubectl', 'kubectl', 'exec', flags, pod, '--', 'sh', '-c', cmdline)
 
-def cmd_server_deployment():
-    with open(basedir / 'server-deployment.yml', 'r', encoding='utf-8') as fp:
+def cmd_cluster_setup():
+    with open(basedir / 'cluster-setup.yml', 'r', encoding='utf-8') as fp:
         sys.stdout.write(fp.read().replace('$VERSION', __version__))
-
-def cmd_build_images():
-    subprocess.run(f'docker build -t docker.io/rhelmot/womm-server:{__version__} ./fs-server', shell=True, check=True)
-    subprocess.run(f'docker build -t docker.io/rhelmot/womm-export:{__version__} ./fs-export', shell=True, check=True)
-
-    subprocess.run(f'docker push docker.io/rhelmot/womm-server:{__version__}', shell=True, check=True)
-    subprocess.run(f'docker push docker.io/rhelmot/womm-export:{__version__}', shell=True, check=True)
 
 
 def main():
+    if '--version' in sys.argv:
+        print(__version__)
+        return
+
     try:
         cmd = sys.argv[1]
     except IndexError:
@@ -38,26 +34,35 @@ def main():
 
     if cmd == 'setup':
         cmd_setup()
+    elif cmd == 'status':
+        cmd_status()
     elif cmd == 'parallel':
         cmd_parallel()
     elif cmd == 'shell':
         cmd_shell()
-    elif cmd == 'server-deployment':
-        cmd_server_deployment()
+    elif cmd == 'logs':
+        cmd_logs()
+    elif cmd == 'finish':
+        cmd_finish()
+    elif cmd == 'cluster-setup':
+        cmd_cluster_setup()
     # it's a secret to everyone.
     elif cmd == 'ssh':
         cmd_ssh()
-    elif cmd == 'build-images':
-        cmd_build_images()
+    elif cmd == 'leader':
+        cmd_leader()
     else:
         print('Usage: womm [cmd] [parameters]')
         print()
         print('Commands:')
         print('  setup       configure an image for the current directory')
+        print('  status      show status of running tasks')
         print('  parallel    run tasks in parallel')
         print('  shell       get a shell in your execution environment')
-        print('  server-deployment')
-        print('              print the kubernetes yaml for the file server')
+        print('  logs        follow logs for an async task')
+        print('  finish      clean up resources for an async task')
+        print('  cluster-setup')
+        print('              print the kubernetes yaml to prepare the cluster')
 
 if __name__ == '__main__':
     main()

@@ -2,6 +2,11 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: womm-task-$ID
+  annotations:
+    womm-cwd: "$PWD"
+    womm-host: "$HOST"
+    womm-controller-pid: "$CONTROLLER_PID"
+    womm-cmd: "$CMD"
 spec:
   replicas: $PARALLELISM
   selector:

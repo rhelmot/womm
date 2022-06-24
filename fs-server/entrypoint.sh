@@ -70,7 +70,7 @@ function stop()
     exit 0
 }
 
-if [ "$1" -e "stop" ]; then
+if [ "$1" = "stop" ]; then
     stop
 fi
 

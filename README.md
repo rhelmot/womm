@@ -29,11 +29,17 @@ Next, install the runtime dependencies:
 - rsync
 - perl
 
-Next, make sure the WOMM filesystem server is running in your cluster.
+Next, make sure the cluster is configured to run WOMM tasks.
 
 ```
-$ womm server-deployment | kubectl create -f -
+$ womm cluster-setup | kubectl create -f -
 ```
+
+Feel free to view the configuration before you pipe it into kubectl.
+It will create:
+
+- A deployment and corresponding service for the WOMM filesystem server
+- A service account and role to allow the leader task to dispatch jobs and tear down tasks
 
 Configuration
 -------------
@@ -148,6 +154,8 @@ Options:
   --procs-per-pod N   Assign N jobslots per pod (default 1)
   --kube-cpu N        Reserve N cpus per pod (default 1)
   --kube-mem N        Reserve N memory per pod (default 512Mi)
+  --async             Run the coordinator in the cluster, requiring manual log collection and
+                      cleanup, but adding resilience against network failures
   --help              Show this message :)
 
 Other options will be interpreted by gnu parallel.
@@ -161,6 +169,37 @@ You can also adjust the number of jobs that will be assigned to a single pod at 
 As far as I know, this will only be useful in edge cases related to resource constraints.
 Finally, if you want just a little extra kick to your analysis, you can run `--local-procs` to add the local machine to the worker pool.
 Be careful doing this if your application writes data to disk!
+
+The `--async` flag changes the operation of WOMM to allow tasks to operate independently of the client, in case of network failures, for example.
+If provided, the `womm` command will terminate when the task is started after printing instructions for monitoring it.
+Asynchronous tasks cannot be run with lazy filesystem shares (see below).
+
+Cleaning up
+-----------
+
+The first step of cleaning up is seeing the mess you've made.
+Use `womm status` to view all tasks using resources on the cluster which were spawned on your machine:
+
+```
+$ womm status
+ID        AGE    STATUS     CPU    MEM  HEALTH    PWD                          COMMAND
+--------  -----  -------  -----  -----  --------  ---------------------------  ----------------------------------
+blhqwudx  50m    RUNNING      1  512Mi  1/1       /home/audrey/proj/supercool  'parallel' '--' 'sleep 1; echo {}'
+```
+
+A quick guide to the STATUS field:
+
+- `RUNNING` - The task is ongoing
+- `COMPLETE` - The task is completed and waiting to be cleaned up
+- `ORPHANED` - The task is hung because the coordinator went away
+
+If you see ORPHANED at any point, immediately clean it up.
+It is doing nothing but wasting resource quota in the cluster.
+
+COMPLETE should only happen when running async tasks, since synchronous tasks should be cleaned up automatically by the coordinator (or else become ORPHANED).
+Asynchronous tasks do _some_ cleanup on their own, but cannot do all of it, since logs must be buffered indefinitely.
+
+To do the rest of the cleanup (or to purge an ORPHANED task), run `womm finish <task id>`.
 
 How the filesystem share works
 ------------------------------
@@ -208,7 +247,7 @@ To handle this, there are two kinds of eager share - no syncback, and syncback o
 No syncback will simply discard any changes which are made on the filesystem server.
 Syncback on complete will open an additional rsync connection to the filesystem server once all jobs have completed and pull any changes back to your local machine.
 This is dangerous!
-**If you make any changes to your application while it is running in this mode, they will be reverted when it finishes running.**
+**If there are any clock discrepancies between your local machine and the cluster, any changes you make to your application while it is running will be reverted when it is finished.**
 Note that the syncback operation will never delete files from your local machine, only modify and create.
 This is too much of a footgun to enable.
 
