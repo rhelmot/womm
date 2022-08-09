@@ -106,7 +106,7 @@ def connection_test():
     ).returncode != 0:
         print("You are offline, or the server is down. Uh oh!")
         print("Is kubectl configured to use the right namespace?")
-        print("If you're just getting started, you may want: 'womm cluster-config | kubectl create -f -'")
+        print("If you're just getting started, you may want: 'womm cluster-setup | kubectl create -f -'")
         sys.exit(1)
 
 def get_server_clusterip():
