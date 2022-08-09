@@ -2,6 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: womm-task-$ID
+  $NAMESPACE_LINE
   annotations:
     womm-cwd: "$PWD"
     womm-host: "$HOST"
@@ -17,6 +18,8 @@ spec:
       labels:
         womm_task: $ID
     spec:
+      $SECRETS_LINE1
+      $SECRETS_LINE2
       containers:
         - name: womm-task-$ID
           image: $IMAGE

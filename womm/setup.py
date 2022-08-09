@@ -135,6 +135,9 @@ def cmd_setup():
     environment_check()
     connection_test()
 
+    namespace = None if existing_cfg is None else existing_cfg.get('namespace', None)
+    secret_name = None if existing_cfg is None else existing_cfg.get('secret_name', None)
+
     reinitialize_share = existing_cfg is None or not is_share_allocated(existing_cfg['share_path'])
     if not reinitialize_share:
         print('Do you want to change the share type? y/n')
@@ -153,6 +156,22 @@ def cmd_setup():
             return
     else:
         share_method = existing_cfg['share_kind']
+
+
+    kube_from_scratch = existing_cfg is None
+    if existing_cfg is not None:
+        print("Do you want to change your kubernetes config? y/n")
+        if choice(['y', 'n'], 'n') == 'y':
+            kube_from_scratch = True
+    if kube_from_scratch:
+        print("Enter namespace [blank for default]:")
+        namespace = choice(lambda x: True, "").strip()
+        if len(namespace) == 0:
+            namespace = None
+        print("Enter image pull secret name [blank for none]:")
+        secret_name = choice(lambda x: True, "").strip()
+        if len(secret_name) == 0:
+            secret_name = None
 
     from_scratch = existing_cfg is None
     if existing_cfg is not None:
@@ -187,4 +206,6 @@ def cmd_setup():
         "share_path": share_path,
         "share_kind": share_method,
         "image": img_name,
+        "namespace": namespace,
+        "secret_name": secret_name,
     })
