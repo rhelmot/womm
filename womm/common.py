@@ -28,7 +28,7 @@ basedir = Path(__file__).resolve().parent
 #   "cwd": "/home/rhelmot/.womm",
 #   "hostname": "daisy"
 # }
-cfg_keys = { "share_kind", "share_path", "image", "cwd", "hostname" }
+cfg_keys = { "share_kind", "share_path", "image", "cwd", "hostname", "namespace", "secret_name" }
 
 def get_prefix():
     try:

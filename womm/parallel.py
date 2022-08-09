@@ -21,6 +21,16 @@ def make_deployment(parallelism, cfg, job_mem, job_cpu, pwd, cmd):
     nfs_path = cfg['share_path'] if cfg['share_kind'] != 'none' else None
     cmd_str = ' '.join("'%s'" % arg.replace('"', '\\"') for arg in cmd)
 
+    namespace_line = ""
+    if 'namespace' in cfg:
+        namespace_line = "namespace: " + cfg['namespace']
+
+    secrets_line1 = ""
+    secrets_line2 = ""
+    if 'secret_name' in cfg:
+        secrets_line1 = "imagePullSecrets:"
+        secrets_line2 = "  - name: " + cfg['secret_name']
+
     task_id = make_id()
     with open(basedir / 'task-deployment.yml', 'r', encoding='utf-8') as fp:
         deployment_yml = fp.read()
@@ -34,7 +44,10 @@ def make_deployment(parallelism, cfg, job_mem, job_cpu, pwd, cmd):
         .replace('$HOST', hostname) \
         .replace('$CONTROLLER_PID', str(os.getpid())) \
         .replace('$PWD', pwd) \
-        .replace('$CMD', cmd_str)
+        .replace('$CMD', cmd_str) \
+        .replace('$NAMESPACE_LINE', namespace_line) \
+        .replace('$SECRETS_LINE1', secrets_line1) \
+        .replace('$SECRETS_LINE2', secrets_line2)
 
 
     if nfs_server is not None:
