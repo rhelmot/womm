@@ -22,12 +22,12 @@ def make_deployment(parallelism, cfg, job_mem, job_cpu, pwd, cmd):
     cmd_str = ' '.join("'%s'" % arg.replace('"', '\\"') for arg in cmd)
 
     namespace_line = ""
-    if 'namespace' in cfg:
+    if cfg.get('namespace', None) not in (None, ''):
         namespace_line = "namespace: " + cfg['namespace']
 
     secrets_line1 = ""
     secrets_line2 = ""
-    if 'secret_name' in cfg:
+    if cfg.get('secret_name', None) not in (None, ''):
         secrets_line1 = "imagePullSecrets:"
         secrets_line2 = "  - name: " + cfg['secret_name']
 
