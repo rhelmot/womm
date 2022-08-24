@@ -9,6 +9,7 @@ import string
 import json
 import time
 import subprocess
+import base64
 
 from . import __version__
 
@@ -60,7 +61,9 @@ def cfg_load():
         return None
 
     assert type(cfg) is dict
-    assert set(cfg) == cfg_keys
+    if set(cfg) != cfg_keys:
+        print("Refusing to load config from old version of WOMM")
+        return None
     if cfg['cwd'] != cwd:
         return None
     if cfg['hostname'] != platform.node():
@@ -147,38 +150,50 @@ def setup_lazy_share(remote_path, local_path):
     if get_share_container():
         return
 
-    p1 = subprocess.Popen(  # pylint: disable=consider-using-with
-        ['kubectl', 'exec', '-i', 'deploy/womm-server', '--', 'sshfs', ':/data', remote_path, '-o', 'slave'],
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL,
-    )
+    kubeconfig = base64.b64encode(subprocess.run(
+        ['kubectl', 'config', 'view', '--raw', '--flatten'],
+        check=True,
+        stdout=subprocess.PIPE
+    ).stdout).decode()
 
-    p2 = subprocess.Popen(  # pylint: disable=consider-using-with
+    subprocess.run(['docker', 'pull', 'rhelmot/womm-export:' + __version__], check=True)
+    subprocess.run(
         [
             'docker',
             'run',
-            '-i',
+            '--rm',
+            '-d',
             '-v',
             '%s:/data' % (local_path,),
+            '-e',
+            'REMOTE_PATH=' + remote_path,
+            '-e',
+            'KUBECONFIG_B64=' + kubeconfig,
             '--label',
             'womm-lazy-share=' + local_path,
             'rhelmot/womm-export:' + __version__,
-            '/usr/lib/ssh/sftp-server',
         ],
-        stdin=p1.stdout,
-        stdout=p1.stdin,
-        stderr=subprocess.DEVNULL,
+        check=True,
     )
 
-    time.sleep(0.5)
-    if p1.poll() is not None or p2.poll() is not None:
-        raise Exception("Could not start rmount connection - processes died.")
+    time.sleep(2)
+    if not subprocess.run(
+        ['docker', 'ps', '-q', '--filter', 'label=womm-lazy-share'],
+        stdout=subprocess.PIPE,
+        check=True
+    ).stdout:
+        raise Exception("Lazy share container failed to start. What did I do wrong?")
+
+    subprocess.run(
+        ['kubectl', 'exec', '-i', 'deploy/womm-server', '--', 'exportfs', '-a'],
+        stdin=subprocess.DEVNULL,
+        check=True
+    )
 
 def choice(options, default=None):
     if not callable(options):
         xx = options
-        options = lambda c: c in xx
+        options = lambda c: c in xx  # pylint: disable=unnecessary-lambda-assignment
 
     while True:
         if default is None:

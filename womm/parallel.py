@@ -1,7 +1,7 @@
 # pylint: disable=consider-using-with
 from contextlib import contextmanager
 from collections import namedtuple
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import tempfile
 import threading
 import json
@@ -22,12 +22,12 @@ def make_deployment(parallelism, cfg, job_mem, job_cpu, pwd, cmd):
     cmd_str = ' '.join("'%s'" % arg.replace('"', '\\"') for arg in cmd)
 
     namespace_line = ""
-    if 'namespace' in cfg:
+    if cfg['namespace']:
         namespace_line = "namespace: " + cfg['namespace']
 
     secrets_line1 = ""
     secrets_line2 = ""
-    if 'secret_name' in cfg:
+    if cfg['secret_name']:
         secrets_line1 = "imagePullSecrets:"
         secrets_line2 = "  - name: " + cfg['secret_name']
 
@@ -182,8 +182,8 @@ Usage: womm shell [options] -- [command]
 
 Options:
   --local             Run the shell locally instead of remotely. Other args will have no effect.
-  --kube-cpu N        Reserve N cpus per pod (default 4)
-  --kube-mem N        Reserve N memory per pod (default 1Gi)
+  --kube-cpu N        Reserve N cpus (default 4)
+  --kube-mem N        Reserve N memory (default 1Gi)
   --help              Show this message :)
 """)
     sys.exit(0)
@@ -214,7 +214,6 @@ def cmd_parallel():
     local_procs = 0
     procs_per_pod = 1
     async_ = False
-    citation = False
 
     iterable = iter(enumerate(parallel_opts))
     for i, opt in iterable:
@@ -387,6 +386,24 @@ def cmd_shell():
             subprocess.run(cmd, shell=True, check=False)
 
 def session_start_share(cfg):
+    if cfg['share_kind'] == 'eager-2':
+        date1 = datetime.fromisoformat(
+            subprocess.run(['date', '+%FT%T%:z', '-u'], stdout=subprocess.PIPE, check=True).stdout.strip().decode()
+        )
+        tstart = datetime.now(timezone.utc)
+        date2 = datetime.fromisoformat(
+            subprocess.run(
+                ['kubectl', 'exec', 'deploy/womm-server', '--', 'date', '+%FT%T%:z', '-u'],
+                stdout=subprocess.PIPE,
+                check=True
+            ).stdout.strip().decode()
+        )
+        halfping = (datetime.now(timezone.utc) - tstart) / 2
+        diff = date1 + halfping - date2
+        if diff > timedelta(seconds=2):
+            raise Exception("Your local clock and the server's clock appear to be desynchronized. " +
+                    "This is dangerous while sending your filesystem to the cloud eagerly with syncback.")
+
     if cfg['share_kind'] in ('eager-1', 'eager-2'):
         subprocess.run(
             [

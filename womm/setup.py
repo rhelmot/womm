@@ -147,7 +147,7 @@ def cmd_setup():
         print("How do you want to share %s to your cloud?" % cwd)
         print("1) lazily")
         print("2) eagerly (no syncback)")
-        print("3) eagerly (syncback on complete, not recommended)")
+        print("3) eagerly (syncback on completion)")
         print("4) not at all")
         print("*) never mind, quit")
         share_method = choice(['1', '2', '3', '4', '*'], '*')

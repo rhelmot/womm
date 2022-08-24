@@ -51,7 +51,9 @@ $ cd proj/supercool
 ```
 
 Now, run `womm setup`.
-This will prompt you first to choose the share method for getting your local directory into the cloud.
+This will run a configuration wizard and save the results to a dotfile in the current directory.
+
+First, choose the share method for getting your local directory into the cloud.
 If you're not sure what to choose, "lazily" is a good option.
 
 ```
@@ -63,6 +65,16 @@ How do you want to share /home/audrey/proj/womm to your cloud?
 4) not at all
 *) never mind, quit
 [*] > 1
+```
+
+Next, you will be asked for some information related to how the application will be deployed to kubernetes.
+If you have a working kube setup and are okay with pushing your work to a public repository, you can leave these options at their defaults.
+
+```
+Enter namespace [blank for default]:
+[] >
+Enter image pull secret name [blank for none]:
+[] >
 ```
 
 Next, setup will prompt you to choose the docker base image for your application, as well as the prefix for how it should tag your application's image.
@@ -110,6 +122,7 @@ f469e45a6f33
 ```
 
 And that's it! You're ready to party.
+If you ever want to change any of these parameters again, just run `womm setup` in the same directory.
 
 Give me a shell on a 32 core machine!
 -------------------------------------
@@ -158,6 +171,7 @@ Options:
   --kube-mem N        Reserve N memory per pod (default 512Mi)
   --async             Run the coordinator in the cluster, requiring manual log collection and
                       cleanup, but adding resilience against network failures
+  --citation          Silence the GNU parallel citation message
   --help              Show this message :)
 
 Other options will be interpreted by gnu parallel.
@@ -250,10 +264,9 @@ This is obviously more robust than the lazy share approach, but creates some ver
 To handle this, there are two kinds of eager share - no syncback, and syncback on completion.
 No syncback will simply discard any changes which are made on the filesystem server.
 Syncback on complete will open an additional rsync connection to the filesystem server once all jobs have completed and pull any changes back to your local machine.
-This is dangerous!
-**If there are any clock discrepancies between your local machine and the cluster, any changes you make to your application while it is running will be reverted when it is finished.**
-Note that the syncback operation will never delete files from your local machine, only modify and create.
-This is too much of a footgun to enable.
+This is somewhat sketchy, as if there are any clock discrepancies between your local machine and the cluster, any changes you make to your application while it is running will be reverted when it is finished.
+WOMM attempts to mitigate this by checking that your local clock is synchronized with the remote clock before starting any tasks with this mode.
+Note that the syncback operation will never delete files from your local machine, only modify and create - this is too much of a footgun to enable.
 
 Citing GNU parallel
 -------------------
